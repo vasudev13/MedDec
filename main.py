@@ -1,5 +1,4 @@
 import os
-import aim
 import json
 import torch
 import warnings
@@ -303,8 +302,7 @@ def predict_mimic(model, data, tokenizer):
 
 def train(args, model, crit, optimizer, lr_scheduler,
         train_dataloader, val_dataloader, verbose=True, train_ns=None, test_dataloader=None):
-    writer = aim.Run(experiment=args.aim_exp, repo=args.aim_repo, 
-            system_tracking_interval=0) if not args.debug else None
+    writer = None
     if writer is not None:
         writer['hparams'] = args.__dict__
 
