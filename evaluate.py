@@ -17,6 +17,8 @@ import re
 import nltk
 from nltk.tokenize import word_tokenize, TreebankWordTokenizer
 
+print(f"Using nltk version: {nltk.__version__}")
+
 VALID_CATEGORY_IDS = set(range(1, 10))  # Shared task label space: 1–9 only.
 
 # Download required NLTK data
@@ -216,8 +218,13 @@ def compute_token_f1_by_file(gold_annotations, predictions, raw_texts):
         gold_anns = gold_annotations.get(file_name, [])
         pred_anns = predictions.get(file_name, [])
 
-        gold_labels = assign_token_labels(tokens, gold_anns, is_gold=True)
+        gold_labels, gold_overlap_mask = assign_token_labels(
+            tokens, gold_anns, is_gold=True
+        )
         pred_labels = assign_token_labels(tokens, pred_anns, is_gold=False)
+        gold_labels, pred_labels = exclude_masked_tokens(
+            gold_labels, pred_labels, gold_overlap_mask
+        )
 
         per_file[file_name] = compute_token_f1_per_sample(gold_labels, pred_labels)
 
@@ -506,10 +513,12 @@ def tokenize_text(text):
 
 def assign_token_labels(tokens, annotations, is_gold=True):
     """Assign labels to tokens based on spans.
-    
-    If a token overlaps with multiple spans, use the first one encountered.
+
+    Assign labels to tokens based on spans. Also return a mask for tokens covered by
+    multiple valid spans so they can be excluded from token-level evaluation.
     """
     labels = [0] * len(tokens)
+    overlap_counts = [0] * len(tokens) if is_gold else None
     
     for ann in annotations:
         start = int(ann.get('start_offset', 0))
@@ -525,10 +534,28 @@ def assign_token_labels(tokens, annotations, is_gold=True):
         for i, token in enumerate(tokens):
             # Check if token overlaps with annotation span
             if token['start'] < end and token['end'] > start:
-                if labels[i] == 0:  # Only assign if not already labeled
-                    labels[i] = label
-    
+                if overlap_counts is not None:
+                    overlap_counts[i] += 1
+                labels[i] = label
+
+    if overlap_counts is not None:
+        return labels, [count > 1 for count in overlap_counts]
+
     return labels
+
+
+def exclude_masked_tokens(gold_labels, pred_labels, overlap_mask):
+    """Remove masked token positions from both gold and prediction labels."""
+    filtered_gold = []
+    filtered_pred = []
+
+    for gold_label, pred_label, is_masked in zip(gold_labels, pred_labels, overlap_mask):
+        if is_masked:
+            continue
+        filtered_gold.append(gold_label)
+        filtered_pred.append(pred_label)
+
+    return filtered_gold, filtered_pred
 
 
 def compute_token_f1_per_sample(gold_labels, pred_labels):
@@ -575,8 +602,12 @@ def compute_token_f1(gold_annotations, predictions, raw_texts):
         gold_anns = gold_annotations.get(file_name, [])
         pred_anns = predictions.get(file_name, [])
         
-        gold_labels = assign_token_labels(tokens, gold_anns, is_gold=True)
+        gold_labels, gold_overlap_mask = assign_token_labels(tokens, gold_anns, is_gold=True)
         pred_labels = assign_token_labels(tokens, pred_anns, is_gold=False)
+
+        gold_labels, pred_labels = exclude_masked_tokens(
+            gold_labels, pred_labels, gold_overlap_mask
+        )
         
         f1 = compute_token_f1_per_sample(gold_labels, pred_labels)
         sample_f1_scores.append(f1)
