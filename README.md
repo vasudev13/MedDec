@@ -24,15 +24,48 @@ The dataset is available through this link: **[https://physionet.org/content/med
 
 # Prerequisites
 
-### Requirements
+This repository requires **Python 3**. If your system does not have `python` / `pip` pointing to Python 3, use `python3` / `pip3` in the commands below.
 
-Install the required packages using the following command:
+## Setup (Recommended: Makefile)
+
+The project provides a Makefile for quick setup. From the project root:
+
+```bash
+# 1. Install dependencies (creates .venv, installs uv if needed, installs requirements)
+make install
+
+# 2. Activate the virtual environment
+source .venv/bin/activate
+
+# 3. (Optional) Download datasets from PhysioNet
+#    You must have a PhysioNet account and data-access approval for MIMIC-III and MedDec.
+#    Set your username, then run:
+PHYSIONET_USER=your_username make download
+
+#    Or create config.local with: export PHYSIONET_USER=your_username
+#    Then: source config.local && make download
 ```
+
+**Make targets:**
+
+| Target | Description |
+|--------|-------------|
+| `make install` | Install uv (if needed), create `.venv`, install from `requirements.txt` |
+| `make install-uv` | Install [uv](https://github.com/astral-sh/uv) package manager only |
+| `make venv` | Create venv and install requirements (assumes uv is installed) |
+| `make download` | Download MIMIC-III and MedDec from PhysioNet (prompts for password) |
+| `make download-mimic` | Download MIMIC-III only |
+| `make download-meddec` | Download MedDec only |
+| `make run` | Run `main.py` (uses `.venv/bin/python`) |
+| `make clean` | Remove `.venv` and `__pycache__` |
+
+## Setup (Alternative: pip)
+
+Install the required packages directly:
+
+```bash
 pip install -r requirements.txt
 ```
-
-> [!NOTE]
-> This repository requires **Python 3**. If your system does not have `python` / `pip` pointing to Python 3, use `python3` / `pip3` in the commands below.
 
 # Utilities
 
