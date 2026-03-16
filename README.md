@@ -9,6 +9,7 @@ MedDec is the first dataset specifically developed for extracting and classifyin
 ## Table of Contents
 - [Dataset](#dataset)
 - [Prerequisites](#prerequisites)
+- [Dataset Preparation](#dataset-preparation)
 - [Utilities](#utilities)
 - [Running the Baselines](#running-the-baselines)
 - [Shared Task](#shared-task)
@@ -46,6 +47,9 @@ PHYSIONET_USER=your_username make download
 #    Then: source config.local && make download
 ```
 
+> [!NOTE]
+> **`make download` alone is not enough to run `main.py`.** Post-processing steps are required (extract raw text, generate stats, preprocess phenotypes, set up splits). See [Dataset Preparation](#dataset-preparation) for the full pipeline.
+
 **Make targets:**
 
 | Target | Description |
@@ -53,8 +57,7 @@ PHYSIONET_USER=your_username make download
 | `make install` | Install uv (if needed), create `.venv`, install from `requirements.txt` |
 | `make install-uv` | Install [uv](https://github.com/astral-sh/uv) package manager only |
 | `make venv` | Create venv and install requirements (assumes uv is installed) |
-| `make download` | Download MIMIC-III and MedDec from PhysioNet (prompts for password) |
-| `make download-mimic` | Download MIMIC-III only |
+| `make download` | Download MedDec + minimal MIMIC-III (NOTEEVENTS, ADMISSIONS, PATIENTS, ~2.5GB) |
 | `make download-meddec` | Download MedDec only |
 | `make run` | Run `main.py` (uses `.venv/bin/python`) |
 | `make clean` | Remove `.venv` and `__pycache__` |
@@ -67,6 +70,46 @@ Install the required packages directly:
 pip install -r requirements.txt
 ```
 
+# Dataset Preparation
+
+To run `main.py`, `data_dir` (default `./data/`) must contain: `data/`, `raw_text/`, `phenos.csv`, `stats.csv`, and `splits/`. Follow these steps:
+
+**1. Download MedDec and minimal MIMIC-III**
+
+```bash
+PHYSIONET_USER=your_username make download
+```
+
+This downloads MedDec and only the three required MIMIC-III files (NOTEEVENTS, ADMISSIONS, PATIENTS) — ~2.5GB compressed. MIMIC files are saved to `./mimiciii-1.4/` by default (override with `MIMIC_DIR`).
+
+**2. Download phenotype annotations** (separate PhysioNet project)
+
+Download from [phenotype-annotations-mimic 1.20.03](https://physionet.org/content/phenotype-annotations-mimic/1.20.03/).
+
+**3. Organize and run post-processing**
+
+Copy MedDec `data/` JSON files (from `physionet.org/files/meddec/1.0.0/data/` after download) into `./data/data/`. Then run:
+
+```bash
+# Extract raw text (accepts .csv or .csv.gz — no decompression needed)
+python extract_texts.py ./data ./mimiciii-1.4/NOTEEVENTS.csv.gz
+
+# Generate stats
+python generate_stats.py ./data ./mimiciii-1.4
+
+# Preprocess phenotypes
+python preprocess_phenos.py /path/to/phenotype_file.csv
+# Copy resulting phenos.csv into ./data/
+
+# Copy splits (test split not released — copy val.txt to test.txt for local eval)
+mkdir -p ./data/splits
+cp splits/train.txt splits/val.txt ./data/splits/
+cp splits/val.txt ./data/splits/test.txt
+```
+
+> [!TIP]
+> `.csv.gz` files work directly with the Python scripts; no manual decompression needed.
+
 # Utilities
 
 These utilities are generally useful for working with the MedDec dataset and MIMIC-III, regardless of whether you are participating in the Shared Task.
@@ -75,23 +118,23 @@ These utilities are generally useful for working with the MedDec dataset and MIM
 
 To extract the notes text from the MIMIC-III dataset, run the following command:
 ```
-python extract_texts.py <data_dir> <notes_path (NOTEEVENTS.csv)>
+python extract_texts.py <data_dir> <notes_path>
 ```
 - `data_dir`: Directory where the dataset is stored.
-- `notes_path`: Path to the `NOTEEVENTS.csv` file. The texts will be written to the `data_dir/raw_text` directory.
+- `notes_path`: Path to `NOTEEVENTS.csv` or `NOTEEVENTS.csv.gz`. The texts will be written to the `data_dir/raw_text` directory. Gzipped files are supported directly.
 
 ### Generate Statistics for Subgroup Analysis
 
 The `generate_stats.py` script builds a `stats.csv` file keyed by `(SUBJECT_ID, HADM_ID, ROW_ID)` containing demographic information (sex, race, language). This is generally useful for demographic analysis of MIMIC-III notes and is required for the Shared Task subgroup scoring.
 
-To generate `stats.csv`, you need local access to MIMIC-III tables `ADMISSIONS` and `PATIENTS` (either `.csv` or `.csv.gz`):
+To generate `stats.csv`, you need local access to MIMIC-III tables `ADMISSIONS` and `PATIENTS` (either `.csv` or `.csv.gz`; gzipped files are supported directly):
 ```
 python generate_stats.py <meddec_dir> <mimic_dir> [output_path]
 ```
 
-Example:
+Example (using `make download-mimic-minimal` output):
 ```
-python generate_stats.py MedDec /path/to/mimic-iii-1.4 MedDec/stats.csv
+python generate_stats.py ./data ./mimiciii-1.4 ./data/stats.csv
 ```
 
 ### Clean Data
@@ -108,7 +151,24 @@ python clean_data.py --data_dir MedDec
 
 # Running the Baselines
 
-The code expects `data`, `raw_text`, and `phenos.csv` to be in the `data_dir` directory.
+The code expects the following in `data_dir` (default `./data/`):
+- `data/` — JSON annotations (from MedDec)
+- `raw_text/` — from `extract_texts.py`
+- `phenos.csv` — from `preprocess_phenos.py`
+- `stats.csv` — from `generate_stats.py`
+- `splits/` — `train.txt`, `val.txt`, `test.txt` (copy from repo; use `val.txt` as `test.txt` if test split is unavailable)
+
+### Full dataset setup
+
+Complete sequence after downloading (assuming `./data` as `data_dir`):
+
+```bash
+python extract_texts.py ./data ./mimiciii-1.4/NOTEEVENTS.csv.gz
+python generate_stats.py ./data ./mimiciii-1.4
+python preprocess_phenos.py /path/to/phenotype_file.csv
+# Copy phenos.csv to ./data/
+mkdir -p ./data/splits && cp splits/train.txt splits/val.txt ./data/splits/ && cp splits/val.txt ./data/splits/test.txt
+```
 
 To train the baselines, run the following command:
 ```
